@@ -19,7 +19,7 @@
       "typeVersion": 3.4,
       "position": [
         -528,
-        -376
+        -384
       ],
       "id": "b98d36ef-8667-4d76-8bed-f8bc1c5015e0",
       "name": "ExtractionOutput"
@@ -34,7 +34,7 @@
       "typeVersion": 1,
       "position": [
         -1104,
-        -376
+        -384
       ],
       "id": "6fe493be-a83a-4d43-aa6c-a9a3f8c26fcc",
       "name": "ParsedEmail"
@@ -71,7 +71,7 @@
       "typeVersion": 2.1,
       "position": [
         -880,
-        -376
+        -384
       ],
       "id": "3a16fc61-7157-4fac-baa8-d31d71d569d1",
       "name": "DataExtractionModel",
@@ -180,7 +180,7 @@
       "typeVersion": 2.3,
       "position": [
         144,
-        -376
+        -384
       ],
       "id": "ff6e6767-c835-4b89-bc39-ea692a1c533c",
       "name": "IfHasInferredData"
@@ -193,7 +193,7 @@
       "typeVersion": 2,
       "position": [
         -80,
-        -376
+        -384
       ],
       "id": "87eff380-8149-4e0d-bb66-617297440d6e",
       "name": "InferenceCheck"
@@ -246,7 +246,7 @@
       "typeVersion": 3.4,
       "position": [
         -1328,
-        -376
+        -384
       ],
       "id": "061024cf-1c54-4314-806b-db264cab17b1",
       "name": "EmailData"
@@ -262,7 +262,7 @@
       "typeVersion": 2.1,
       "position": [
         -1552,
-        -376
+        -384
       ],
       "id": "cade4e83-8bc8-4a99-b0db-28af37ea24fa",
       "name": "Webhook",
@@ -320,7 +320,7 @@
     },
     {
       "parameters": {
-        "content": "## Live Truck Availability Extraction\n\nExtracts structured data from carrier emails using LLM with hallucination detection.\n\n### Setup\n1. Add OpenAI API credential ([Get one here](https://platform.openai.com/api-keys))\n2. Link credential to `DataExtractionModel` and `DataCorrectionModel` nodes\n3. Activate workflow\n\n### LLM Models\n- **GPT-4.1-mini** - Initial extraction (fast, strong inference)\n- **GPT-4.1-nano** - Correction pass (fast, cost-effective)\n- **GPT-5-nano** - Discarded (reasoning capabilities caused over-correction, removing valid inferred data)\n\n### Webhook Endpoint\n\n```\nPOST /webhook/extractors/a86054b3-6ea0-4267-84d6-3180203e026e/emails\n```\n\n### Request Format\n\n```json\n{\n  \"messageId\": \"unique-message-id\",\n  \"from\": \"carrier@example.com\",\n  \"to\": \"dispatch@example.com\",\n  \"date\": \"2026-01-13T10:00:00Z\",\n  \"Subject\": \"Truck Availability\",\n  \"text\": \"Email body content here\"\n}\n```\n\n### Docs\nFull documentation, architecture details, and sample outputs:\nhttps://github.com/JimmyBastos/n8n-ai-data-extraction-workflow/tree/main",
+        "content": "## Live Truck Availability Extraction\n\nExtracts structured data from carrier emails using LLM with hallucination detection.\n\n### Setup\n1. Add OpenAI API credential ([Get one here](https://platform.openai.com/api-keys))\n2. Link credential to `DataExtractionModel` and `DataCorrectionModel` nodes\n3. Activate workflow\n\n### LLM Models\n- **GPT-4.1-mini** - Initial extraction (fast, strong inference)\n- **GPT-4.1-nano** - Correction pass (fast, cost-effective)\n- **GPT-5-nano** - Discarded (reasoning capabilities caused over-correction, removing valid inferred data)\n\n### Webhook Endpoint\n\n```\nPOST /webhook/extractors/a86054b3-6ea0-4267-84d6-3180203e026e/emails\n```\n\n### Request Format\n\n```json\n{\n  \"messageId\": \"unique-message-id\",\n  \"from\": \"carrier@example.com\",\n  \"to\": \"dispatch@example.com\",\n  \"date\": \"2026-01-13T10:00:00Z\",\n  \"Subject\": \"Truck Availability\",\n  \"text\": \"Email body content here\"\n}\n```\n\n### Docs\nFull documentation, architecture details, and sample outputs:\nhttps://github.com/JimmyBastos/n8n-ai-data-extraction-workflow",
         "height": 912,
         "width": 736
       },
@@ -341,7 +341,7 @@
       "typeVersion": 2,
       "position": [
         -304,
-        -376
+        -384
       ],
       "id": "8fecc6f5-629d-476e-b45b-0bf147f3ef96",
       "name": "ExtractionValidation"
@@ -504,7 +504,7 @@
     "executionOrder": "v1",
     "availableInMCP": false
   },
-  "versionId": "a5f3b8b7-c170-4ec3-b2bc-311c54716e64",
+  "versionId": "9fcb0072-8fee-4dbd-a615-0f4090415d37",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "7ddea0a9fd2e0ba09b44f3075aae1eb205c45b7e344fe3394d779505fc858ae3"
