@@ -129,10 +129,10 @@ See [SAMPLES.md](SAMPLES.md) for complete input/output examples:
 | Sample | Description | Confidence |
 |--------|-------------|------------|
 | [1. Complete Email](SAMPLES.md#1-complete-email-high-confidence) | Full details with MC#, location, equipment | 0.9 |
-| [2. Short/Informal](SAMPLES.md#2-short-or-informal-email) | Brief message with minimal formatting | 0.75 |
-| [3. Missing Details](SAMPLES.md#3-missing-or-unclear-details) | Incomplete data, no location | 0.45 |
-| [4. Human Follow-up](SAMPLES.md#4-requires-human-follow-up) | Vague message requiring review | 0.15 |
-| [5. Multi-Truck](SAMPLES.md#5-detailed-multi-truck-email) | Multiple availabilities in one email | 0.85 |
+| [2. Short/Informal](SAMPLES.md#2-short-or-informal-email) | Brief message with minimal formatting | 0.74 |
+| [3. Missing Details](SAMPLES.md#3-missing-or-unclear-details) | Incomplete data, no location | 0.6 |
+| [4. Human Follow-up](SAMPLES.md#4-requires-human-follow-up) | Vague message requiring review | 0.2 |
+| [5. Multi-Truck](SAMPLES.md#5-detailed-multi-truck-email) | Multiple availabilities in one email | 0.8 |
 
 ## Assumptions
 
