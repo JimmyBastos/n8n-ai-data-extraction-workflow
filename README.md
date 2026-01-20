@@ -35,23 +35,6 @@ The workflow implements a **two-pass extraction strategy** with hallucination de
 - **Confidence-based routing**: Extractions scoring below 0.7 confidence automatically require human review.
 - **Retry on failure**: LLM nodes have built-in retry logic for transient failures.
 
-### Node Descriptions
-
-| Node | Type | Purpose |
-|------|------|---------|
-| **Webhook** | Trigger | Receives incoming email data via HTTP POST |
-| **EmailData** | Set | Normalizes input fields (messageId, from, to, date, subject, text) |
-| **ParsedEmail** | Markdown | Converts HTML email content to clean text |
-| **DataExtractionModel** | OpenAI | First-pass LLM extraction with JSON schema |
-| **ExtractionOutput** | Set | Extracts JSON from LLM response |
-| **DataValidation** | Code | Validates required fields, adjusts confidence |
-| **InferenceCheck** | Code | Detects hallucinated/inferred values |
-| **IfHasInferredData** | If | Routes based on inference detection |
-| **DataCorrectionModel** | OpenAI | Second-pass LLM to correct hallucinations |
-| **CorrectionOutput** | Set | Extracts corrected JSON |
-| **IfRequireHumanReview** | If | Routes based on review requirements |
-| **Respond to Webhook** | Response | Returns final JSON response |
-
 ## Tools & Models
 
 ### Platform
@@ -143,6 +126,23 @@ See [SAMPLES.md](SAMPLES.md) for complete input/output examples:
 3. **US geography focus**: Location normalization assumes US cities and states.
 
 4. **Equipment categories**: Limited to `van`, `reefer`, `flatbed`, and `other`.
+
+### Node Descriptions
+
+| Node | Type | Purpose |
+|------|------|---------|
+| **Webhook** | Trigger | Receives incoming email data via HTTP POST |
+| **EmailData** | Set | Normalizes input fields (messageId, from, to, date, subject, text) |
+| **ParsedEmail** | Markdown | Converts HTML email content to clean text |
+| **DataExtractionModel** | OpenAI | First-pass LLM extraction with JSON schema |
+| **ExtractionOutput** | Set | Extracts JSON from LLM response |
+| **DataValidation** | Code | Validates required fields, adjusts confidence |
+| **InferenceCheck** | Code | Detects hallucinated/inferred values |
+| **IfHasInferredData** | If | Routes based on inference detection |
+| **DataCorrectionModel** | OpenAI | Second-pass LLM to correct hallucinations |
+| **CorrectionOutput** | Set | Extracts corrected JSON |
+| **IfRequireHumanReview** | If | Routes based on review requirements |
+| **Respond to Webhook** | Response | Returns final JSON response |
 
 ## Future Improvements
 
