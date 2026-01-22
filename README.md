@@ -12,6 +12,7 @@ This workflow automates the extraction of structured logistics data from these e
 - Availability dates
 - Origin locations
 - Destination preferences
+- Multiple truck extraction - Handles emails with multiple truck availabilities in a single message
 - Confidence scoring and human review flagging
 
 ## Approach
@@ -93,7 +94,7 @@ POST /webhook/extractors/a86054b3-6ea0-4267-84d6-3180203e026e/emails
 ### Using cURL
 
 ```bash
-curl -X POST "https://your-n8n-instance/webhook/extractors/a86054b3-6ea0-4267-84d6-3180203e026e/emails" \
+curl -X POST "https://your-n8n-instance/webhook/extractions/d19cbcdc-d8a9-465a-af00-5f27531aca1d/trucks" \
   -H "Content-Type: application/json" \
   -d '{
     "messageId": "test-001",
@@ -109,23 +110,25 @@ curl -X POST "https://your-n8n-instance/webhook/extractors/a86054b3-6ea0-4267-84
 
 See [SAMPLES.md](SAMPLES.md) for complete input/output examples:
 
-| Sample | Description | Confidence |
-|--------|-------------|------------|
-| [1. Complete Email](SAMPLES.md#1-complete-email-high-confidence) | Full details with MC#, location, equipment | 0.9 |
-| [2. Short/Informal](SAMPLES.md#2-short-or-informal-email) | Brief message with minimal formatting | 0.74 |
-| [3. Missing Details](SAMPLES.md#3-missing-or-unclear-details) | Incomplete data, no location | 0.6 |
-| [4. Human Follow-up](SAMPLES.md#4-requires-human-follow-up) | Vague message requiring review | 0.2 |
-| [5. Multi-Truck](SAMPLES.md#5-detailed-multi-truck-email) | Multiple availabilities in one email | 0.8 |
+| Sample | Description | Trucks | Review Required |
+|--------|-------------|--------|----------------|
+| [1. Structured Multi-Truck](SAMPLES.md#1-structured-multi-truck-list) | Multiple trucks from various origins to Columbus | 7 | Yes (missing equipment) |
+| [2. Daily Schedule](SAMPLES.md#2-daily-schedule-with-equipment-types) | Weekly availability with specific equipment types | 8 | Yes (missing MC#) |
+| [3. Simple One-Liner](SAMPLES.md#3-simple-one-liner) | Brief informal message with minimal details | 1 | Yes (inferred state) |
+| [4. Informal No Punctuation](SAMPLES.md#4-informal-no-punctuation) | Short message without formatting | 1 | Yes (inferred states) |
+| [5. Contact Info](SAMPLES.md#5-with-contact-info) | Vague availability with phone number | 1 | Yes (incomplete data) |
+| [6. Regional Destination](SAMPLES.md#6-regional-destination) | Generic regional destination preference | 1 | Yes (inferred state) |
+| [7. Minimal Details](SAMPLES.md#7-minimal--no-details) | Almost no usable information | 1 | Yes (low confidence) |
 
 ## Assumptions
 
-1. **Single truck per extraction**: The workflow extracts one truck availability per email. Multi-truck emails flag `multiple_entities_detected` for human review.
+1. **Multiple trucks supported**: The workflow now extracts multiple truck availabilities from a single email, with per-truck metadata and validation.
 
 2. **Date resolution**: Relative dates (e.g., "tomorrow", "Monday") are resolved using the email's sent date as the anchor.
 
 3. **US geography focus**: Location normalization assumes US cities and states.
 
-4. **Equipment categories**: Limited to `van`, `reefer`, `flatbed`, and `other`.
+4. **Equipment categories**: Limited to `van`, `reefer`, `flatbed`, `unknown`, and `other`.
 
 ### Node Descriptions
 
@@ -144,11 +147,58 @@ See [SAMPLES.md](SAMPLES.md) for complete input/output examples:
 | **IfRequireHumanReview** | If | Routes based on review requirements |
 | **Respond to Webhook** | Response | Returns final JSON response |
 
-## Future Improvements
 
-- Support for extracting multiple truck availabilities from a single email
+## Data Validation and Quality Control
+
+The workflow implements comprehensive validation and hallucination detection to ensure data quality:
+
+### Validation Logic
+
+After extraction, each truck entry is validated for required fields and confidence thresholds. The validation checks both individual truck records and root-level carrier information.
+
+**Required fields per truck:**
+- Equipment category
+- Availability date
+- Origin city and state
+
+**Root-level requirements:**
+- Carrier MC number
+
+**Review triggers:**
+- Missing any required fields → `incomplete_core_fields` flag
+- Confidence score below 0.7 → `low_confidence_score` flag
+- Any truck requiring review escalates the entire extraction to human review
+
+### Inference Detection
+
+The workflow detects hallucinated or inferred data by verifying that extracted values actually appear in the source email text. This prevents the LLM from inferring information that isn't explicitly stated.
+
+**How it works:**
+1. Every string value in the extraction is compared against the original email text using case-insensitive substring matching
+2. Values that don't appear in the email are flagged as inferred
+3. Inferred fields are logged in `metadata.inferences.fields` with their full path
+4. Safe fields that are allowed to be inferred (like `sourceType`, `date`, `category`) are excluded from checking
+
+**Example:**
+- Email: `"Have a van empty Monday in Chicago"`
+- Extracted: `origin.state = "IL"`
+- Result: Flagged as inferred because "IL" doesn't appear in the email text
+
+### Correction Pass
+
+When inferred fields are detected, a second LLM call is triggered to correct the extraction:
+- The correction model cross-references all extracted values against the original email
+- Values that aren't explicitly stated are removed or set to null
+- Only data that appears in the source text is preserved
+
+This two-pass approach significantly reduces hallucinations while maintaining extraction quality.
+
+
+## Future Improvements
 - Integration with a carrier database for MC number validation
 - Batch processing endpoint for high-volume scenarios
 - Webhook authentication/API key support
 - Configurable confidence thresholds
 - Support for attachments (spreadsheets, images)
+- Enhanced date parsing for ambiguous relative dates
+- Multi-language support beyond English

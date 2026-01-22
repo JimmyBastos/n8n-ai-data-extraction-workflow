@@ -1,5 +1,5 @@
 {
-  "name": "e-mail-extraction",
+  "name": "e-mail-extraction-batch",
   "nodes": [
     {
       "parameters": {
@@ -21,12 +21,12 @@
         -528,
         -384
       ],
-      "id": "b98d36ef-8667-4d76-8bed-f8bc1c5015e0",
+      "id": "1f05682f-82d3-46d8-a0c4-bea72a249431",
       "name": "ExtractionOutput"
     },
     {
       "parameters": {
-        "html": "=<pre>\nSubject: {{ $json.subject }}\nDate: {{ $json.date }}\nText: {{ $json.text }}\n</pre>",
+        "html": "=<pre>\nSubject: {{ $json.subject }} \nDate: {{ $json.date }}\nText: {{ $json.text }}\n</pre>",
         "destinationKey": "parsedText",
         "options": {}
       },
@@ -36,7 +36,7 @@
         -1104,
         -384
       ],
-      "id": "6fe493be-a83a-4d43-aa6c-a9a3f8c26fcc",
+      "id": "b9e45f2d-f931-47a6-9b77-4a8a5bbc93cb",
       "name": "ParsedEmail"
     },
     {
@@ -50,7 +50,7 @@
         "responses": {
           "values": [
             {
-              "content": "=You are a **logistics data extraction specialist**.\nExtract **structured truck availability data** from carrier emails and output **JSON that strictly conforms to the provided schema**.\n\n---\n\n## CORE RULES (DO NOT VIOLATE)\n\n1. **Explicit data first**\n  * **Minimal inference is allowed only when industry-standard and unambiguous**, including:\n    * Day abbreviations (`tues`, `mon`)\n    * Common city misspellings\n    * Widely used state abbreviations, including unformal\n    * Equipment shorthand\n  * Never infer quantities, intent, or missing entities.\n  * Any inferred value **must be flagged implicitly via lower confidence score**.\n  * Do not fabricate information.\n\n2. **Missing data**\n   * If not present, set the field to `null`.\n   * Do not omit required fields.\n\n3. **Raw text preservation**\n   * Always store original text in `rawText` or `dateRaw` before normalization - No reasoining description.\n\n4. **Date normalization**\n   * Normalize to `YYYY-MM-DD`.\n   **Always attempt to resolve relative dates. This is mandatory.**\n      * Use the email sent date as the primary reference for relative date resolution:\n        * If the email `Date` header exists, consider it the anchor:\n            * Email date: `{{ $('EmailData').item.json.date }}`\n        * If the email date is absent, default to the system’s current date:\n            * System current date (ISO): `{{ new Date().toISOString() }}`\n            * System current date (Text): `{{ new Date().toDateString() }}`\n      * If unresolved, set normalized date to `null` and keep raw text. Only set null if you really can't resolve it. Always resolve if possible!\n\n5. **Location normalization**\n  * **City:** Title Case; expand abbreviations only if unambiguous.\n  * **State:** 2-letter uppercase.\n    * Use only if explicitly provided **or if the city is unambiguous and uniquely maps to a single state in the US**.\n    * If the city could exist in multiple states, do **not** infer; set to `null`.\n  * **Region:** Title Case; general direction or region; include only if clear.\n  * Correct typos in city and state when the values can be 100% confidently verified or inferred from explicit data.\n  * If unclear, set normalized fields to `null` and preserve raw text.\n  * **Never guess geography beyond allowed city → state inference.**\n\n6. **Abbreviations**\n   * Expand only if explicit, standard, and certain.\n   * Do not expand slang or ambiguous shorthand.\n   * Always preserve original text in `rawText`.\n\n7. **Multiple trucks detected**\n  * If the email contains information about **more than one truck or load**, flag `\"multiple_entities_detected\"` in `reviewReasons` and `requiresHumanReview = true`.\n  * Do not attempt to merge or guess multiple trucks’ details.\n\n8. **Output**\n   * Valid JSON only.\n   * No explanations, comments, or markdown.\n\n---\n\n## DATA TO EXTRACT (JSON ONLY)\n\n* Carrier (carrier): object or `null`\n  * MC Number (carrier.mcNumber): numeric only or `null`\n  * Company Name (carrier.companyName): exact text or `null`\n\n* Truck Availability (truckAvailability): object\n  * Equipment (truckAvailability.equipment): object or `null`\n    * Category (equipment.category): `van | reefer | flatbed | other | null`\n    * Configuration (equipment.configuration): exact text or `null`\n    * Features (equipment.features): array or `null`\n\n  * Availability (truckAvailability.availability): object or `null`\n    * Date (availability.date): `YYYY-MM-DD` or `null`\n    * Raw Date (availability.dateRaw): exact text or `null`\n    * Flexible (availability.isFlexible): `true` only if explicit, else `null`\n\n  * Origin (truckAvailability.origin): object or `null`\n    * City (origin.city): normalized or `null`\n    * State (origin.state): 2-letter uppercase or `null`\n    * Raw Text (origin.rawText): exact text or `null`\n\n  * Destination Preference (truckAvailability.destinationPreference): object or `null`\n    * Type (destinationPreference.type): `region | city | null`\n    * Region (destinationPreference.region): normalized or `null`\n    * City (destinationPreference.city): normalized or `null`\n    * State (destinationPreference.state): 2-letter uppercase or `null`\n    * Use **only one**: region-based OR city-based\n\n  * Notes (truckAvailability.notes): array of explicit details or `null`\n---\n\n## METADATA EXTRACTION\n* Extraction Metadata (metadata.extraction)\n  * Confidence Score (confidenceScore): number `0.0–1.0`\n  * Requires Human Review (requiresHumanReview): boolean\n  * Review Reasons (reviewReasons): array - `low_confidence_score | incomplete_core_fields | ambiguous_data | conflicting_data | multiple_entities_detected`\n\n## CONFIDENCE SCORE GUIDE\nEvaluate the confidence score strictly. Missing, inferred or null core fields reduce score significantly.\n\n* **0.9–1.0:** Data is complete, accurate, and unambiguous.\n* **0.7–0.8:** Minor ambiguity; most fields are present.\n* **0.5–0.6:** Partial data; several fields are missing or uncertain.\n* **0.3–0.4:** Minimal data; most fields are missing or unreliable.\n* **0.0–0.2:** No actionable data; extraction largely missing or invalid.\n\n## AUTOMATIC SELF-CHECK\nBefore output:\n* Verify every non-null value appears verbatim in the email\n* If any value cannot be directly quoted -> set it to `null`\n* If multiple trucks detected → set `requiresHumanReview = true` and add `\"multiple_entities_detected\"` to `reviewReasons`.\n* If `confidenceScore` < `0.6`, set:\n  * Set `requiresHumanReview = true`\n  * Update `reviewReasons`\n\n---\n\n## FINAL RULE\n\nReturn **only** the fully corrected JSON.\nExact schema.\nNo extra keys.\nNo reasoning steps.\nNo explanations, specially in fields.\nNo prose.\n\n---\n\n## EMAIL INPUT\n\n```\n{{ $('ParsedEmail').item.json.parsedText }}\n```\n"
+              "content": "=You are a **logistics data extraction specialist**.\n\nExtract **structured truck availability data** from carrier emails and output **JSON that strictly conforms to the provided schema**.\n\n---\n\n## CORE RULES (DO NOT VIOLATE)\n\n### 1. Explicit data first\n* Extract **only what is explicitly stated** in the email.\n* **Minimal inference is allowed only when industry-standard and unambiguous**, including:\n  * Day abbreviations (`mon`, `tues`)\n  * Common city misspellings (correct obvious typos)\n  * Widely used state abbreviations (even informal)\n  * Equipment shorthand\n* **Never infer quantities, intent, or destinations beyond what is explicit**.\n* Any inferred value **must reduce the confidence score**.\n* **Never fabricate information.**\n\n---\n\n### 2. Missing data\n* If a required field is not present, set it to `null`.\n* **Never omit required fields**, even if all values are `null`.\n\n---\n### 3. Raw text preservation\n* Always store original text exactly as written in:\n  * `rawEmailText`\n  * `origin.rawText`\n  * `destinationPreference.rawText`\n  * `availability.dateRaw`\n  * `contact.rawText`\n* **Do not explain or paraphrase raw text.**\n\n---\n\n### 4. Date normalization (MANDATORY)\n* Normalize dates to `YYYY-MM-DD`.\n* **Always attempt to resolve relative dates** (`today`, `tomorrow`, weekdays).\n* Use the email sent date as the anchor:\n  * If available: `{{ $('EmailData').item.json.date }}`\n  * Otherwise use system date:\n    * ISO: `{{ new Date().toISOString() }}`\n    * Text: `{{ new Date().toDateString() }}`\n* If resolution is impossible, set `date = null` and preserve `dateRaw`.\n\n---\n### 5. Location normalization\n* **City**: Title Case; expand abbreviations only if unambiguous. Correct typos only when 100% certain.\n* **State**: 2-letter uppercase.\n  * Use only if explicitly stated **or** if the city uniquely maps to a single US state.\n  * Do **not** infer the state if multiple states are possible.\n  * If the city does not belong to the stated state → set state to `null`.\n  * If the state cannot be confidently corrected → set state to `null`.\n* **Region**: Title Case; only if clearly stated.\n* **Never guess geography beyond allowed city → state inference.**\n\n---\n\n### 6. Abbreviations\n* Expand only if explicit, standard, and certain.\n* Preserve original text in all `rawText` fields.\n\n---\n\n### 7. Batch & multiple trucks (IMPORTANT)\n* Every email represents an **availability batch**.\n* `availabilityBatch.trucks` must contain **one or more truck objects**.\n* Use:\n  * `truckCount` when multiple identical trucks are stated (`xN`).\n  * Separate truck objects when details differ (equipment, date, origin, destination).\n* **Do NOT merge trucks with different attributes.**\n* Multiple trucks are allowed and expected; do **not** flag as an error.\n\n---\n\n### 8. Destination preference rules\n* Set `destinationPreference.type` correctly:\n  * `exact` → specific city/state\n  * `directional` → heading toward a city or area\n  * `region` → general region (Midwest, Southeast)\n  * `unspecified` → vague or missing destination\n* Populate only the fields that apply to the selected type.\n* Preserve original wording in `destinationPreference.rawText`.\n\n---\n\n### 9. Contact extraction\n* Extract contact details **only if explicitly present**:\n  * Phone\n  * Email\n* Store original contact phrase in `contact.rawText`.\n* If no contact info exists, set `contact = null`.\n\n---\n\n### 10. Confidence & review logic\n* Assign **confidenceScore (0.0–1.0)** per truck:\n  * Reduce score for:\n    * Inferred values (typo corrections, city → state inference)\n    * Missing core fields\n    * Vague language\n* Set `requiresHumanReview = true` if:\n  * Confidence < 0.6\n  * Core fields are missing\n  * Data is ambiguous or conflicting\n* Populate `reviewReasons` accordingly.\n\n---\n\n## CONFIDENCE SCORE GUIDE\n* **0.9–1.0** → Complete, explicit, unambiguous\n* **0.7–0.8** → Minor inference or ambiguity (typo correction or state inference)\n* **0.5–0.6** → Partial data, missing fields\n* **0.3–0.4** → Very vague or weak signal\n* **0.0–0.2** → No actionable availability\n\n---\n\n## AUTOMATIC SELF-CHECK (MANDATORY)\nBefore output:\n* Every non-null value must be directly traceable to the email text.\n* If a value cannot be directly quoted → set it to `null`.\n* Ensure:\n  * At least **one truck** exists in `availabilityBatch.trucks`\n  * All required fields exist\n  * JSON matches schema **exactly**\n* If `confidenceScore < 0.6`:\n  * `requiresHumanReview = true`\n  * Add appropriate `reviewReasons`\n\n---\n\n## OUTPUT RULES (ABSOLUTE)\n* Output **valid JSON only**\n* **No explanations**\n* **No comments**\n* **No markdown**\n* **No extra keys**\n* **Exact schema only**\n\n---\n\n## EMAIL INPUT\n\n```\n{{ $('ParsedEmail').item.json.parsedText }}\n```"
             }
           ]
         },
@@ -61,10 +61,10 @@
             "textOptions": {
               "type": "json_schema",
               "name": "live_truck_availability_extraction",
-              "schema": "{\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"carrier\", \"truckAvailability\", \"metadata\"],\n  \"properties\": {\n    \"carrier\": {\n      \"type\": [\"object\"],\n      \"description\": \"Carrier identification details if explicitly present. Minimal normalization allowed only for standard formats (e.g., numeric MC). Set to null if absent.\",\n      \"additionalProperties\": false,\n      \"required\": [\"mcNumber\", \"companyName\"],\n      \"properties\": {\n        \"mcNumber\": {\n          \"type\": [\"string\", \"null\"],\n          \"description\": \"Motor Carrier number, numeric only. Normalize format only if clearly numeric and standard. Set to null if not present.\"\n        },\n        \"companyName\": {\n          \"type\": [\"string\", \"null\"],\n          \"description\": \"Carrier company name exactly as written. Do not infer ownership or aliases.\"\n        }\n      }\n    },\n\n    \"truckAvailability\": {\n      \"type\": \"object\",\n      \"description\": \"Structured representation of a single truck availability. Minimal industry-standard inference allowed only when unambiguous.\",\n      \"additionalProperties\": false,\n      \"required\": [\"equipment\", \"availability\", \"origin\", \"destinationPreference\", \"notes\"],\n      \"properties\": {\n        \"equipment\": {\n          \"type\": [\"object\"],\n          \"description\": \"Equipment details. Allow normalization of common shorthand only if unambiguous.\",\n          \"additionalProperties\": false,\n          \"required\": [\"category\", \"configuration\", \"features\"],\n          \"properties\": {\n            \"category\": {\n              \"type\": [\"string\", \"null\"],\n              \"enum\": [\"van\", \"reefer\", \"flatbed\", \"other\", null],\n              \"description\": \"Normalized equipment category. Common trucking shorthand may be normalized if unambiguous.\"\n            },\n            \"configuration\": {\n              \"type\": [\"string\", \"null\"],\n              \"description\": \"Equipment configuration exactly as stated. Do not infer from category.\"\n            },\n            \"features\": {\n              \"type\": [\"array\", \"null\"],\n              \"description\": \"Explicitly stated equipment features only.\",\n              \"items\": { \"type\": \"string\" }\n            }\n          }\n        },\n\n        \"availability\": {\n          \"type\": [\"object\"],\n          \"description\": \"Truck availability timing. Relative days may be resolved if unambiguous.\",\n          \"additionalProperties\": false,\n          \"required\": [\"date\", \"dateRaw\"],\n          \"properties\": {\n            \"date\": {\n              \"type\": [\"string\", \"null\"],\n              \"description\": \"Normalized availability date (YYYY-MM-DD). Resolve standard relative weekdays if unambiguous.\"\n            },\n            \"dateRaw\": {\n              \"type\": [\"string\", \"null\"],\n              \"description\": \"Original date text exactly as written. No additional information.\"\n            }\n          }\n        },\n\n        \"origin\": {\n          \"type\": [\"object\"],\n          \"description\": \"Origin location. Allow correction of obvious misspellings and standard abbreviations if unambiguous.\",\n          \"additionalProperties\": false,\n          \"required\": [\"city\", \"state\", \"rawText\"],\n          \"properties\": {\n            \"city\": {\n              \"type\": [\"string\", \"null\"],\n              \"description\": \"Normalized city in Title Case. Correct obvious misspellings only if unambiguous.\"\n            },\n            \"state\": {\n              \"type\": [\"string\", \"null\"],\n              \"description\": \"2-letter uppercase state code. Normalize common abbreviations if unambiguous. If the city is 100% clear, you may infer the state.\"\n            },\n            \"rawText\": {\n              \"type\": [\"string\", \"null\"],\n              \"description\": \"Original origin text exactly as written.\"\n            }\n          }\n        },\n\n        \"destinationPreference\": {\n          \"type\": [\"object\"],\n          \"description\": \"Routing intent or destination preference. May normalize common regional or state shorthand if unambiguous.\",\n          \"additionalProperties\": false,\n          \"required\": [\"type\", \"region\", \"city\", \"state\"],\n          \"properties\": {\n            \"type\": {\n              \"type\": [\"string\", \"null\"],\n              \"enum\": [\"region\", \"city\", null],\n              \"description\": \"Indicates region-based or city-based preference.\"\n            },\n            \"region\": {\n              \"type\": [\"string\", \"null\"],\n              \"description\": \"Normalized region or general direction if clearly implied.\"\n            },\n            \"city\": {\n              \"type\": [\"string\", \"null\"],\n              \"description\": \"Normalized destination city if explicitly stated.\"\n            },\n            \"state\": {\n              \"type\": [\"string\", \"null\"],\n              \"description\": \"2-letter uppercase destination state if explicitly or unambiguously stated.\"\n            }\n          }\n        },\n\n        \"notes\": {\n          \"type\": [\"array\", \"null\"],\n          \"description\": \"Other explicitly stated or clearly implied operational details.\",\n          \"items\": { \"type\": \"string\" }\n        }\n      }\n    },\n\n    \"metadata\": {\n      \"type\": \"object\",\n      \"description\": \"Extraction metadata for validation and quality control.\",\n      \"additionalProperties\": false,\n      \"required\": [\"extraction\"],\n      \"properties\": {\n        \"extraction\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"confidenceScore\", \"requiresHumanReview\", \"reviewReasons\"],\n          \"properties\": {\n            \"confidenceScore\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1,\n              \"description\": \"Overall confidence score. Reduce score when any normalization or inference is applied.\"\n            },\n            \"requiresHumanReview\": {\n              \"type\": \"boolean\",\n              \"description\": \"True if confidence is low, data is incomplete, ambiguous, conflicting, or multiple entities are detected.\"\n            },\n            \"reviewReasons\": {\n              \"type\": \"array\",\n              \"description\": \"General reasons indicating extraction risk.\",\n              \"items\": {\n                \"type\": \"string\",\n                \"enum\": [\n                  \"low_confidence_score\",\n                  \"incomplete_core_fields\",\n                  \"ambiguous_data\",\n                  \"conflicting_data\",\n                  \"multiple_entities_detected\"\n                ]\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n}\n"
+              "schema": "{\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"carrier\", \"contact\", \"availabilityBatch\", \"metadata\"],\n\n  \"properties\": {\n    \"carrier\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"mcNumber\", \"companyName\"],\n      \"properties\": {\n        \"mcNumber\": {\n          \"type\": [\"string\", \"null\"]\n        },\n        \"companyName\": {\n          \"type\": [\"string\", \"null\"]\n        }\n      }\n    },\n\n    \"contact\": {\n      \"type\": [\"object\", \"null\"],\n      \"additionalProperties\": false,\n      \"required\": [\"phone\", \"email\", \"rawText\"],\n      \"properties\": {\n        \"phone\": { \"type\": [\"string\", \"null\"] },\n        \"email\": { \"type\": [\"string\", \"null\"] },\n        \"rawText\": { \"type\": [\"string\", \"null\"] }\n      }\n    },\n\n    \"availabilityBatch\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"sourceType\", \"rawEmailText\", \"trucks\"],\n      \"properties\": {\n        \"sourceType\": {\n          \"type\": \"string\",\n          \"enum\": [\"email\"]\n        },\n        \"rawEmailText\": {\n          \"type\": \"string\"\n        },\n        \"trucks\": {\n          \"type\": \"array\",\n          \"minItems\": 1,\n          \"items\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"required\": [\n              \"truckCount\",\n              \"equipment\",\n              \"availability\",\n              \"origin\",\n              \"driverType\",\n              \"destinationPreference\",\n              \"notes\",\n              \"metadata\"\n            ],\n            \"properties\": {\n              \"truckCount\": {\n                \"type\": \"integer\",\n                \"minimum\": 1\n              },\n\n              \"equipment\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"category\", \"configuration\", \"features\"],\n                \"properties\": {\n                  \"category\": {\n                    \"type\": [\"string\", \"null\"],\n                    \"enum\": [\"van\", \"reefer\", \"flatbed\", \"other\", \"unknown\", null]\n                  },\n                  \"configuration\": {\n                    \"type\": [\"string\", \"null\"]\n                  },\n                  \"features\": {\n                    \"type\": [\"array\", \"null\"],\n                    \"items\": { \"type\": \"string\" }\n                  }\n                }\n              },\n\n              \"availability\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"date\", \"dateRaw\"],\n                \"properties\": {\n                  \"date\": { \"type\": [\"string\", \"null\"] },\n                  \"dateRaw\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"origin\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"city\", \"state\", \"rawText\"],\n                \"properties\": {\n                  \"city\": { \"type\": [\"string\", \"null\"] },\n                  \"state\": { \"type\": [\"string\", \"null\"] },\n                  \"rawText\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"driverType\": {\n                \"type\": [\"array\", \"null\"],\n                \"items\": {\n                  \"type\": \"string\",\n                  \"enum\": [\"solo\", \"team\"]\n                }\n              },\n\n              \"destinationPreference\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\n                  \"type\",\n                  \"region\",\n                  \"primaryCity\",\n                  \"primaryState\",\n                  \"acceptableDestinations\",\n                  \"rawText\"\n                ],\n                \"properties\": {\n                  \"type\": {\n                    \"type\": [\"string\", \"null\"],\n                    \"enum\": [\"exact\", \"directional\", \"region\", \"unspecified\", null]\n                  },\n                  \"region\": { \"type\": [\"string\", \"null\"] },\n                  \"primaryCity\": { \"type\": [\"string\", \"null\"] },\n                  \"primaryState\": { \"type\": [\"string\", \"null\"] },\n                  \"acceptableDestinations\": {\n                    \"type\": [\"array\", \"null\"],\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"additionalProperties\": false,\n                      \"required\": [\"city\", \"state\"],\n                      \"properties\": {\n                        \"city\": { \"type\": \"string\" },\n                        \"state\": { \"type\": \"string\" }\n                      }\n                    }\n                  },\n                  \"rawText\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"notes\": {\n                \"type\": [\"string\", \"array\", \"null\"],\n                \"items\": { \"type\": \"string\" }\n              },\n\n              \"metadata\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\n                  \"confidenceScore\",\n                  \"requiresHumanReview\",\n                  \"reviewReasons\"\n                ],\n                \"properties\": {\n                  \"confidenceScore\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"maximum\": 1\n                  },\n                  \"requiresHumanReview\": {\n                    \"type\": \"boolean\"\n                  },\n                  \"reviewReasons\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"string\",\n                      \"enum\": [\n                        \"low_confidence_score\",\n                        \"incomplete_core_fields\",\n                        \"ambiguous_data\",\n                        \"conflicting_data\"\n                      ]\n                    }\n                  }\n                }\n              }\n            }\n          }\n        }\n      }\n    },\n\n    \"metadata\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"extraction\"],\n      \"properties\": {\n        \"extraction\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\n            \"confidenceScore\",\n            \"requiresHumanReview\",\n            \"reviewReasons\"\n          ],\n          \"properties\": {\n            \"confidenceScore\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"requiresHumanReview\": {\n              \"type\": \"boolean\"\n            },\n            \"reviewReasons\": {\n              \"type\": \"array\",\n              \"items\": {\n                \"type\": \"string\",\n                \"enum\": [\n                  \"low_confidence_score\",\n                  \"incomplete_core_fields\",\n                  \"ambiguous_data\",\n                  \"conflicting_data\"\n                ]\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n}\n"
             }
           },
-          "temperature": 0.9
+          "temperature": 0.8
         }
       },
       "type": "@n8n/n8n-nodes-langchain.openAi",
@@ -73,7 +73,7 @@
         -880,
         -384
       ],
-      "id": "3a16fc61-7157-4fac-baa8-d31d71d569d1",
+      "id": "e8d71470-4d44-4054-803f-c87f96574860",
       "name": "DataExtractionModel",
       "retryOnFail": true,
       "credentials": {
@@ -105,7 +105,7 @@
             "textOptions": {
               "type": "json_schema",
               "name": "live_truck_availability_extraction",
-              "schema": "{\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"carrier\", \"truckAvailability\", \"metadata\"],\n  \"properties\": {\n    \"carrier\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"mcNumber\", \"companyName\"],\n      \"properties\": {\n        \"mcNumber\": { \"type\": [\"string\", \"null\"] },\n        \"companyName\": { \"type\": [\"string\", \"null\"] }\n      }\n    },\n    \"truckAvailability\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\n        \"equipment\",\n        \"availability\",\n        \"origin\",\n        \"destinationPreference\",\n        \"notes\"\n      ],\n      \"properties\": {\n        \"equipment\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"category\", \"configuration\", \"features\"],\n          \"properties\": {\n            \"category\": {\n              \"type\": [\"string\", \"null\"],\n              \"enum\": [\"van\", \"reefer\", \"flatbed\", \"other\"]\n            },\n            \"configuration\": { \"type\": [\"string\", \"null\"] },\n            \"features\": {\n              \"type\": [\"array\", \"null\"],\n              \"items\": { \"type\": \"string\" }\n            }\n          }\n        },\n        \"availability\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"date\", \"dateRaw\"],\n          \"properties\": {\n            \"date\": { \"type\": [\"string\", \"null\"] },\n            \"dateRaw\": { \"type\": [\"string\", \"null\"] }\n          }\n        },\n        \"origin\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"city\", \"state\", \"rawText\"],\n          \"properties\": {\n            \"city\": { \"type\": [\"string\", \"null\"] },\n            \"state\": { \"type\": [\"string\", \"null\"] },\n            \"rawText\": { \"type\": [\"string\", \"null\"] }\n          }\n        },\n        \"destinationPreference\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\"type\", \"region\", \"city\", \"state\"],\n          \"properties\": {\n            \"type\": {\n              \"type\": [\"string\", \"null\"],\n              \"enum\": [\"region\", \"city\"]\n            },\n            \"region\": { \"type\": [\"string\", \"null\"] },\n            \"city\": { \"type\": [\"string\", \"null\"] },\n            \"state\": { \"type\": [\"string\", \"null\"] }\n          }\n        },\n        \"notes\": {\n          \"type\": [\"array\", \"null\"],\n          \"items\": { \"type\": \"string\" }\n        }\n      }\n    },\n    \"metadata\": {\n      \"type\": \"object\",\n      \"description\": \"Extraction metadata.\",\n      \"additionalProperties\": false,\n      \"required\": [\"extraction\", \"inferences\"],\n      \"properties\": {\n        \"extraction\": {\n          \"type\": \"object\",\n          \"description\": \"Extraction metadata.\",\n          \"additionalProperties\": false,\n          \"required\": [\n            \"confidenceScore\",\n            \"requiresHumanReview\",\n            \"reviewReasons\"\n          ],\n          \"properties\": {\n            \"confidenceScore\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1,\n              \"description\": \"Extraction confidence value.\"\n            },\n            \"requiresHumanReview\": {\n              \"type\": \"boolean\",\n              \"description\": \"Human review indicator.\"\n            },\n            \"reviewReasons\": {\n              \"type\": \"array\",\n              \"items\": {\n                \"type\": \"string\",\n                \"enum\": [\n                  \"low_confidence_score\",\n                  \"incomplete_core_fields\",\n                  \"ambiguous_data\",\n                  \"conflicting_data\",\n                  \"multiple_entities_detected\",\n                  \"hallucination_corrected\"\n                ]\n              }\n            }\n          }\n        },\n        \"inferences\": {\n          \"type\": \"object\",\n          \"description\": \"Hallucination and inference tracking.\",\n          \"additionalProperties\": false,\n          \"required\": [\"fields\", \"severity\"],\n          \"properties\": {\n            \"fields\": {\n              \"type\": \"array\",\n              \"description\": \"JSON paths of fields containing inferred or hallucinated values.\",\n              \"items\": { \"type\": \"string\" }\n            },\n            \"severity\": {\n              \"type\": \"string\",\n              \"enum\": [\"none\", \"low\", \"medium\", \"high\"],\n              \"description\": \"Overall hallucination or inference risk level.\"\n            }\n          }\n        }\n      }\n    }\n  }\n}\n",
+              "schema": "\n{\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"carrier\", \"contact\", \"availabilityBatch\", \"metadata\"],\n\n  \"properties\": {\n    \"carrier\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"mcNumber\", \"companyName\"],\n      \"properties\": {\n        \"mcNumber\": {\n          \"type\": [\"string\", \"null\"]\n        },\n        \"companyName\": {\n          \"type\": [\"string\", \"null\"]\n        }\n      }\n    },\n\n    \"contact\": {\n      \"type\": [\"object\", \"null\"],\n      \"additionalProperties\": false,\n      \"required\": [\"phone\", \"email\", \"rawText\"],\n      \"properties\": {\n        \"phone\": { \"type\": [\"string\", \"null\"] },\n        \"email\": { \"type\": [\"string\", \"null\"] },\n        \"rawText\": { \"type\": [\"string\", \"null\"] }\n      }\n    },\n\n    \"availabilityBatch\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"sourceType\", \"rawEmailText\", \"trucks\"],\n      \"properties\": {\n        \"sourceType\": {\n          \"type\": \"string\",\n          \"enum\": [\"email\"]\n        },\n        \"rawEmailText\": {\n          \"type\": \"string\"\n        },\n        \"trucks\": {\n          \"type\": \"array\",\n          \"minItems\": 1,\n          \"items\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"required\": [\n              \"truckCount\",\n              \"equipment\",\n              \"availability\",\n              \"origin\",\n              \"driverType\",\n              \"destinationPreference\",\n              \"notes\",\n              \"metadata\"\n            ],\n            \"properties\": {\n              \"truckCount\": {\n                \"type\": \"integer\",\n                \"minimum\": 1\n              },\n\n              \"equipment\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"category\", \"configuration\", \"features\"],\n                \"properties\": {\n                  \"category\": {\n                    \"type\": [\"string\", \"null\"],\n                    \"enum\": [\"van\", \"reefer\", \"flatbed\", \"other\", \"unknown\", null]\n                  },\n                  \"configuration\": {\n                    \"type\": [\"string\", \"null\"]\n                  },\n                  \"features\": {\n                    \"type\": [\"array\", \"null\"],\n                    \"items\": { \"type\": \"string\" }\n                  }\n                }\n              },\n\n              \"availability\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"date\", \"dateRaw\"],\n                \"properties\": {\n                  \"date\": { \"type\": [\"string\", \"null\"] },\n                  \"dateRaw\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"origin\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"city\", \"state\", \"rawText\"],\n                \"properties\": {\n                  \"city\": { \"type\": [\"string\", \"null\"] },\n                  \"state\": { \"type\": [\"string\", \"null\"] },\n                  \"rawText\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"driverType\": {\n                \"type\": [\"array\", \"null\"],\n                \"items\": {\n                  \"type\": \"string\",\n                  \"enum\": [\"solo\", \"team\"]\n                }\n              },\n\n              \"destinationPreference\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\n                  \"type\",\n                  \"region\",\n                  \"primaryCity\",\n                  \"primaryState\",\n                  \"acceptableDestinations\",\n                  \"rawText\"\n                ],\n                \"properties\": {\n                  \"type\": {\n                    \"type\": [\"string\", \"null\"],\n                    \"enum\": [\"exact\", \"directional\", \"region\", \"unspecified\", null]\n                  },\n                  \"region\": { \"type\": [\"string\", \"null\"] },\n                  \"primaryCity\": { \"type\": [\"string\", \"null\"] },\n                  \"primaryState\": { \"type\": [\"string\", \"null\"] },\n                  \"acceptableDestinations\": {\n                    \"type\": [\"array\", \"null\"],\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"additionalProperties\": false,\n                      \"required\": [\"city\", \"state\"],\n                      \"properties\": {\n                        \"city\": { \"type\": \"string\" },\n                        \"state\": { \"type\": \"string\" }\n                      }\n                    }\n                  },\n                  \"rawText\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"notes\": {\n                \"type\": [\"string\", \"array\", \"null\"],\n                \"items\": { \"type\": \"string\" }\n              },\n\n              \"metadata\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\n                  \"confidenceScore\",\n                  \"requiresHumanReview\",\n                  \"reviewReasons\"\n                ],\n                \"properties\": {\n                  \"confidenceScore\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"maximum\": 1\n                  },\n                  \"requiresHumanReview\": {\n                    \"type\": \"boolean\"\n                  },\n                  \"reviewReasons\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"string\",\n                      \"enum\": [\n                        \"low_confidence_score\",\n                        \"incomplete_core_fields\",\n                        \"ambiguous_data\",\n                        \"conflicting_data\"\n                      ]\n                    }\n                  }\n                }\n              }\n            }\n          }\n        }\n      }\n    },\n\n    \"metadata\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"extraction\", \"inferences\"],\n      \"properties\": {\n        \"extraction\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\n            \"confidenceScore\",\n            \"requiresHumanReview\",\n            \"reviewReasons\"\n          ],\n          \"properties\": {\n            \"confidenceScore\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"requiresHumanReview\": {\n              \"type\": \"boolean\"\n            },\n            \"reviewReasons\": {\n              \"type\": \"array\",\n              \"items\": {\n                \"type\": \"string\",\n                \"enum\": [\n                  \"low_confidence_score\",\n                  \"incomplete_core_fields\",\n                  \"ambiguous_data\",\n                  \"conflicting_data\",\n                  \"hallucination_corrected\"\n                ]\n              }\n            }\n          }\n        },\n        \"inferences\": {\n          \"type\": \"object\", \n          \"additionalProperties\": false,\n          \"required\": [\"fields\", \"severity\"],\n          \"properties\": {\n            \"fields\": {\n              \"type\": \"array\",\n              \"items\": { \"type\": \"string\" }\n            },\n            \"severity\": {\n              \"type\": \"string\",\n              \"enum\": [\"none\", \"low\", \"medium\", \"high\"],\n              \"description\": \"Overall hallucination or inference risk level.\"\n            }\n          }\n        }\n      }\n    }\n  }\n}\n",
               "strict": true
             }
           }
@@ -117,7 +117,7 @@
         496,
         -448
       ],
-      "id": "97525560-fb6b-4a2b-b6f5-2b81d63506b7",
+      "id": "af501a19-8008-46c2-ae2f-2fac3ab70b45",
       "name": "DataCorrectionModel",
       "retryOnFail": true,
       "credentials": {
@@ -147,7 +147,7 @@
         832,
         -448
       ],
-      "id": "9edc22ab-4e3d-49ed-a0da-b02169b34b29",
+      "id": "849ac4b9-fb3a-45e2-8fd3-40bbfe22c6f5",
       "name": "CorrectionOutput"
     },
     {
@@ -182,12 +182,12 @@
         144,
         -384
       ],
-      "id": "ff6e6767-c835-4b89-bc39-ea692a1c533c",
+      "id": "dac29fb6-8b4f-4ff8-93b2-6f825c8d0c88",
       "name": "IfHasInferredData"
     },
     {
       "parameters": {
-        "jsCode": "const email = $('ParsedEmail').first().json.parsedText\n\nconst extraction = $('ExtractionOutput').first().json.extraction;\n\n\nconst equipmentVariants = {\n  van: ['van', 'dry van', 'dryvan'],\n  reefer: ['reefer', 'refrigerated', 'refrig'],\n  flatbed: ['flatbed', 'flat bed', 'flat-bed'],\n  other: []\n};\n\nconst escapeRegex = (str) =>\n  str.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');\n\nconst flexMatch = (text, source) => {\n  if (!text) return false;\n  const pattern = escapeRegex(text.toLowerCase()).split('').join('\\\\s*');\n  return new RegExp(pattern, 'i').test(source);\n};\n\nconst exactMatch = (text, source) => {\n  if (!text) return false;\n  const pattern = `\\\\b${escapeRegex(text)}\\\\b`;\n  return new RegExp(pattern, 'i').test(source);\n};\n\nconst matchAnyVariant = (variants, source, matchFn = flexMatch) =>\n  variants.some(v => matchFn(v, source));\n\nconst getNestedValue = (obj, path) =>\n  path.split('.').reduce((acc, key) => acc?.[key], obj);\n\nconst checkField = (fieldPath, options = {}) => {\n  const {\n    variants = null,\n    matchFn = flexMatch,\n    source = email\n  } = options;\n\n  const value = getNestedValue(extraction, fieldPath);\n  if (!value) return null;\n\n  const toCheck = variants || [value];\n  return matchAnyVariant(toCheck, source, matchFn) ? null : fieldPath;\n};\n\nconst checks = [\n  checkField('carrier.mcNumber'),\n  checkField('carrier.companyName'),\n\n  checkField('truckAvailability.origin.city'),\n  checkField('truckAvailability.origin.state', { matchFn: exactMatch }),\n\n  checkField('truckAvailability.equipment.category', {\n    variants: equipmentVariants[\n      getNestedValue(extraction, 'truckAvailability.equipment.category')\n    ] || []\n  }),\n\n  // destinationPreference (discriminated)\n  checkField('truckAvailability.destinationPreference.region'),\n  checkField('truckAvailability.destinationPreference.city'),\n  checkField('truckAvailability.destinationPreference.state', {\n    matchFn: exactMatch\n  })\n];\n\nconst inferredFields = checks.filter(Boolean);\n\nreturn {\n  extraction: {\n    ...extraction,\n    metadata: {\n      ...extraction.metadata,\n      inferences: { \n        fields: inferredFields\n      }\n    }\n  }\n};\n"
+        "jsCode": "// fuzzy string match: case-insensitive substring\nconst fuzzyMatch = (value, email) => {\n  if (typeof value !== 'string' || value.trim() === '' || !value) return true;\n  return email.toLowerCase().includes(value.toLowerCase());\n};\n\n// recursively walk any object and collect inferred fields\nconst findInferredFields = (data, email, path = []) => {\n  if (data == null) return [];\n\n  if (typeof data === 'string') {\n    return fuzzyMatch(data, email) ? [] : [path.join('.')];\n  }\n\n  if (typeof data !== 'object') {\n    return [];\n  }\n\n  if (Array.isArray(data)) {\n    return data.flatMap((item, index) =>\n      findInferredFields(item, email, path.concat(index))\n    );\n  }\n\n  return Object.keys(data).flatMap((key) =>\n    findInferredFields(data[key], email, path.concat(key))\n  );\n};\n\nconst SAFE_FIELDS = ['sourceType', 'type', 'date', 'reviewReasons', 'rawText', 'category'];\n\nconst email = $('ParsedEmail').first().json.parsedText || '';\nconst extraction = $('ExtractionValidation').first().json.extraction;\nconst inferredFields = findInferredFields(extraction, email);\n\nconst inferredFieldsWithoutSafeInferences = inferredFields.filter((path) => !SAFE_FIELDS.some(safeField => path.includes(safeField)));\n\nreturn {\n  extraction: {\n    ...extraction,\n    metadata: {\n      ...extraction.metadata,\n      inferences: {\n        fields: inferredFieldsWithoutSafeInferences\n      }\n    }\n  }\n};\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -195,7 +195,7 @@
         -80,
         -384
       ],
-      "id": "87eff380-8149-4e0d-bb66-617297440d6e",
+      "id": "c2c4ea26-56cb-4574-b545-10c2cd231a25",
       "name": "InferenceCheck"
     },
     {
@@ -229,7 +229,7 @@
             {
               "id": "350c1134-25a7-420d-af0e-df649f13d6bf",
               "name": "subject",
-              "value": "={{ $json.body.Subject }}",
+              "value": "={{ $json.body.subject }}",
               "type": "string"
             },
             {
@@ -248,40 +248,8 @@
         -1328,
         -384
       ],
-      "id": "061024cf-1c54-4314-806b-db264cab17b1",
+      "id": "3cf4739b-dac1-471e-912a-05cff9c908f7",
       "name": "EmailData"
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "extractors/a86054b3-6ea0-4267-84d6-3180203e026e/emails",
-        "responseMode": "responseNode",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2.1,
-      "position": [
-        -1552,
-        -384
-      ],
-      "id": "cade4e83-8bc8-4a99-b0db-28af37ea24fa",
-      "name": "Webhook",
-      "webhookId": "a86054b3-6ea0-4267-84d6-3180203e026e"
-    },
-    {
-      "parameters": {
-        "respondWith": "json",
-        "responseBody": "={{ $json.extraction }}",
-        "options": {}
-      },
-      "type": "n8n-nodes-base.respondToWebhook",
-      "typeVersion": 1.5,
-      "position": [
-        1328,
-        -384
-      ],
-      "id": "31909cff-7266-4e43-bd79-adb3ce8ee6ea",
-      "name": "Respond to Webhook"
     },
     {
       "parameters": {
@@ -315,12 +283,12 @@
         1040,
         -288
       ],
-      "id": "2b501c57-08ae-4b16-9b02-722eb4cd5be7",
+      "id": "0b1dd90b-1dc0-4d84-b8d1-c43b1fcc4168",
       "name": "IfRequireHumanReview"
     },
     {
       "parameters": {
-        "content": "## Live Truck Availability Extraction\n\nExtracts structured data from carrier emails using LLM with hallucination detection.\n\n### Setup\n1. Add OpenAI API credential ([Get one here](https://platform.openai.com/api-keys))\n2. Link credential to `DataExtractionModel` and `DataCorrectionModel` nodes\n3. Activate workflow\n\n### LLM Models\n- **GPT-4.1-mini** - Initial extraction (fast, strong inference)\n- **GPT-4.1-nano** - Correction pass (fast, cost-effective)\n- **GPT-5-nano** - Discarded (reasoning capabilities caused over-correction, removing valid inferred data)\n\n### Webhook Endpoint\n\n```\nPOST /webhook/extractors/a86054b3-6ea0-4267-84d6-3180203e026e/emails\n```\n\n### Request Format\n\n```json\n{\n  \"messageId\": \"unique-message-id\",\n  \"from\": \"carrier@example.com\",\n  \"to\": \"dispatch@example.com\",\n  \"date\": \"2026-01-13T10:00:00Z\",\n  \"Subject\": \"Truck Availability\",\n  \"text\": \"Email body content here\"\n}\n```\n\n### Docs\nFull documentation, architecture details, and sample outputs:\nhttps://github.com/JimmyBastos/n8n-ai-data-extraction-workflow",
+        "content": "## Live Truck Availability Extraction\n\nExtracts structured data from carrier emails using LLM with hallucination detection.\n\n### Setup\n1. Add OpenAI API credential ([Get one here](https://platform.openai.com/api-keys))\n2. Link credential to `DataExtractionModel` and `DataCorrectionModel` nodes\n3. Activate workflow\n\n### LLM Models\n- **GPT-4.1-mini** - Initial extraction (fast, strong inference)\n- **GPT-4.1-nano** - Correction pass (fast, cost-effective)\n- **GPT-5-nano** - Discarded (reasoning capabilities caused over-correction, removing valid inferred data)\n\n### Webhook Endpoint\n```\nPOST /webhook/extractors/a86054b3-6ea0-4267-84d6-3180203e026e/emails\n```\n\n### Request Format\n```json\n{\n  \"messageId\": \"unique-message-id\",\n  \"from\": \"carrier@example.com\",\n  \"to\": \"dispatch@example.com\",\n  \"date\": \"2026-01-13T10:00:00Z\",\n  \"subject\": \"Truck Availability\",\n  \"text\": \"Email body content here\"\n}\n```\n\n### Docs\nFull documentation, architecture details, and sample outputs:\nhttps://github.com/JimmyBastos/n8n-ai-data-extraction-workflow",
         "height": 912,
         "width": 736
       },
@@ -330,12 +298,12 @@
         -1552,
         -160
       ],
-      "id": "498048ae-3cb9-4944-8693-2a0c922e674e",
+      "id": "d24c6da0-2a1c-47d2-b53d-4201789f308e",
       "name": "Sticky Note"
     },
     {
       "parameters": {
-        "jsCode": "const extraction = $('ExtractionOutput').first().json.extraction;\n\nconst availability = extraction.truckAvailability || {};\nconst metadata = extraction.metadata?.extraction || {};\n\nconst hasMissingRequiredFields =\n  availability.equipment?.category == null ||\n  availability.availability?.date == null ||\n  availability.origin?.city == null;\n\nconst hasLowConfidence = metadata.confidenceScore < 0.7;\nconst requiresHumanReview = hasMissingRequiredFields || hasLowConfidence;\n\nif (requiresHumanReview) {\n  metadata.requiresHumanReview = true;\n\n  const reasons = new Set(metadata.reviewReasons || []);\n\n  if (hasMissingRequiredFields) {\n    reasons.add('incomplete_core_fields');\n  }\n\n  if (hasLowConfidence) {\n    reasons.add('low_confidence_score');\n  }\n\n  metadata.reviewReasons = Array.from(reasons);\n}\n\nextraction.metadata.extraction = metadata;\n\nreturn {\n  extraction: { ...extraction }\n};\n"
+        "jsCode": "\nconst extraction = $('ExtractionOutput').first().json.extraction;\nconst batch = extraction.availabilityBatch;\nconst rootMetadata = extraction.metadata.extraction;\n\nconst trucks = Array.isArray(batch?.trucks) ? batch.trucks : [];\n\n// NEW: MC number check\nconst hasMissingMcNumber = extraction.carrier?.mcNumber == null;\n\nlet anyTruckRequiresReview = false;\nconst rootReasons = new Set(rootMetadata.reviewReasons || []);\n\nif (hasMissingMcNumber) {\n  rootMetadata.requiresHumanReview = true;\n  rootReasons.add('incomplete_core_fields');\n}\n\n// Per-truck validation\nfor (const truck of trucks) {\n  const truckMetadata = truck.metadata;\n\n  const hasMissingRequiredFields =\n    truck.equipment?.category == null ||\n    truck.availability?.date == null ||\n    truck.origin?.city == null ||\n    truck.origin?.state == null;\n\n  const hasLowConfidence =\n    typeof truckMetadata.confidenceScore === 'number' &&\n    truckMetadata.confidenceScore < 0.7;\n\n  const requiresHumanReview = hasMissingRequiredFields || hasLowConfidence;\n\n  if (requiresHumanReview) {\n    anyTruckRequiresReview = true;\n    truckMetadata.requiresHumanReview = true;\n\n    const reasons = new Set(truckMetadata.reviewReasons || []);\n\n    if (hasMissingRequiredFields) {\n      reasons.add('incomplete_core_fields');\n      rootReasons.add('incomplete_core_fields');\n    }\n\n    if (hasLowConfidence) {\n      reasons.add('low_confidence_score');\n      rootReasons.add('low_confidence_score');\n    }\n\n    truckMetadata.reviewReasons = Array.from(reasons);\n  }\n}\n\n// Root metadata aggregation\nif (anyTruckRequiresReview || hasMissingMcNumber) {\n  rootMetadata.requiresHumanReview = true;\n  rootMetadata.reviewReasons = Array.from(rootReasons);\n}\n\nextraction.metadata.extraction = rootMetadata;\n\nreturn { extraction };\n"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -343,7 +311,7 @@
         -304,
         -384
       ],
-      "id": "8fecc6f5-629d-476e-b45b-0bf147f3ef96",
+      "id": "f4c27cf5-898e-4c9b-b248-132b94cdd62b",
       "name": "ExtractionValidation"
     },
     {
@@ -354,11 +322,43 @@
       "type": "n8n-nodes-base.stickyNote",
       "position": [
         928,
-        -96
+        -128
       ],
       "typeVersion": 1,
-      "id": "ba5c1e84-cca8-48f2-9ab0-a8cb6dd9a829",
+      "id": "4d4d8d07-5021-4041-98d7-e442c31ef941",
       "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "extractions/d19cbcdc-d8a9-465a-af00-5f27531aca1d/trucks",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1616,
+        -384
+      ],
+      "id": "f626097f-caa2-491c-a4a0-8f9b7dc6dddb",
+      "name": "Webhook",
+      "webhookId": "d19cbcdc-d8a9-465a-af00-5f27531aca1d"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.extraction }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1408,
+        -384
+      ],
+      "id": "c0503f55-2d26-4103-a2b4-ba93be51075e",
+      "name": "Response"
     }
   ],
   "pinData": {},
@@ -458,29 +458,18 @@
         ]
       ]
     },
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "EmailData",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
     "IfRequireHumanReview": {
       "main": [
         [
           {
-            "node": "Respond to Webhook",
+            "node": "Response",
             "type": "main",
             "index": 0
           }
         ],
         [
           {
-            "node": "Respond to Webhook",
+            "node": "Response",
             "type": "main",
             "index": 0
           }
@@ -497,6 +486,17 @@
           }
         ]
       ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "EmailData",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
@@ -504,11 +504,11 @@
     "executionOrder": "v1",
     "availableInMCP": false
   },
-  "versionId": "9fcb0072-8fee-4dbd-a615-0f4090415d37",
+  "versionId": "9fc0f5af-0bb3-4a10-af36-e9f6ac14fa79",
   "meta": {
     "templateCredsSetupCompleted": true,
     "instanceId": "7ddea0a9fd2e0ba09b44f3075aae1eb205c45b7e344fe3394d779505fc858ae3"
   },
-  "id": "9IQSvfNR614op0r-0xd7H",
+  "id": "mYvYGhDXNXN6tn7I",
   "tags": []
 }
