@@ -1,5 +1,11 @@
 # Email Test Samples
 
+This file contains examples of truck availability emails and their expected extraction outputs. Each sample demonstrates different email formats and data quality scenarios.
+
+**How to use:** Click on "Output Sample" to expand/collapse the JSON results.
+
+---
+
 ## 1. Structured Multi-Truck List
 
 **Input:**
@@ -14,7 +20,10 @@
 }
 ```
 
-**Expected Output:**
+<details>
+<summary><b>Output Sample</b></summary>
+
+
 ```json
 {
 	"carrier": {
@@ -428,6 +437,8 @@
 }
 ```
 
+</details>
+
 ---
 
 ## 2. Daily Schedule with Equipment Types
@@ -444,7 +455,10 @@
 }
 ```
 
-**Expected Output:**
+<details>
+<summary><b>Output Sample</b></summary>
+
+
 ```json
 {
 	"carrier": {
@@ -740,6 +754,8 @@
 }
 ```
 
+</details>
+
 ---
 
 ## 3. Simple One-Liner
@@ -756,7 +772,10 @@
 }
 ```
 
-**Expected Output:**
+<details>
+<summary><b>Output Sample</b></summary>
+
+
 ```json
 {
 	"carrier": {
@@ -823,6 +842,8 @@
 }
 ```
 
+</details>
+
 ---
 
 ## 4. Informal No Punctuation
@@ -839,7 +860,10 @@
 }
 ```
 
-**Expected Output:**
+<details>
+<summary><b>Output Sample</b></summary>
+
+
 ```json
 {
 	"carrier": {
@@ -906,6 +930,8 @@
 }
 ```
 
+</details>
+
 ---
 
 ## 5. With Contact Info
@@ -922,7 +948,10 @@
 }
 ```
 
-**Expected Output:**
+<details>
+<summary><b>Output Sample</b></summary>
+
+
 ```json
 {
 	"carrier": {
@@ -993,6 +1022,8 @@
 }
 ```
 
+</details>
+
 ---
 
 ## 6. Regional Destination
@@ -1009,7 +1040,10 @@
 }
 ```
 
-**Expected Output:**
+<details>
+<summary><b>Output Sample</b></summary>
+
+
 ```json
 {
 	"carrier": {
@@ -1076,6 +1110,8 @@
 }
 ```
 
+</details>
+
 ---
 
 ## 7. Minimal / No Details
@@ -1092,7 +1128,10 @@
 }
 ```
 
-**Expected Output:**
+<details>
+<summary><b>Output Sample</b></summary>
+
+
 ```json
 {
 	"carrier": {
@@ -1156,3 +1195,5 @@
 	}
 }
 ```
+
+</details>
