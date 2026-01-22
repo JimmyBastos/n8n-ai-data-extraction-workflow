@@ -1,0 +1,514 @@
+{
+  "name": "e-mail-extraction-batch",
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "40a70063-31b0-4614-ad2d-1ddbe0c3404f",
+              "name": "extraction",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -528,
+        -384
+      ],
+      "id": "1f05682f-82d3-46d8-a0c4-bea72a249431",
+      "name": "ExtractionOutput"
+    },
+    {
+      "parameters": {
+        "html": "=<pre>\nSubject: {{ $json.subject }} \nDate: {{ $json.date }}\nText: {{ $json.text }}\n</pre>",
+        "destinationKey": "parsedText",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.markdown",
+      "typeVersion": 1,
+      "position": [
+        -1104,
+        -384
+      ],
+      "id": "b9e45f2d-f931-47a6-9b77-4a8a5bbc93cb",
+      "name": "ParsedEmail"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are a **logistics data extraction specialist**.\n\nExtract **structured truck availability data** from carrier emails and output **JSON that strictly conforms to the provided schema**.\n\n---\n\n## CORE RULES (DO NOT VIOLATE)\n\n### 1. Explicit data first\n* Extract **only what is explicitly stated** in the email.\n* **Minimal inference is allowed only when industry-standard and unambiguous**, including:\n  * Day abbreviations (`mon`, `tues`)\n  * Common city misspellings (correct obvious typos)\n  * Widely used state abbreviations (even informal)\n  * Equipment shorthand\n* **Never infer quantities, intent, or destinations beyond what is explicit**.\n* Any inferred value **must reduce the confidence score**.\n* **Never fabricate information.**\n\n---\n\n### 2. Missing data\n* If a required field is not present, set it to `null`.\n* **Never omit required fields**, even if all values are `null`.\n\n---\n### 3. Raw text preservation\n* Always store original text exactly as written in:\n  * `rawEmailText`\n  * `origin.rawText`\n  * `destinationPreference.rawText`\n  * `availability.dateRaw`\n  * `contact.rawText`\n* **Do not explain or paraphrase raw text.**\n\n---\n\n### 4. Date normalization (MANDATORY)\n* Normalize dates to `YYYY-MM-DD`.\n* **Always attempt to resolve relative dates** (`today`, `tomorrow`, weekdays).\n* Use the email sent date as the anchor:\n  * If available: `{{ $('EmailData').item.json.date }}`\n  * Otherwise use system date:\n    * ISO: `{{ new Date().toISOString() }}`\n    * Text: `{{ new Date().toDateString() }}`\n* If resolution is impossible, set `date = null` and preserve `dateRaw`.\n\n---\n### 5. Location normalization\n* **City**: Title Case; expand abbreviations only if unambiguous. Correct typos only when 100% certain.\n* **State**: 2-letter uppercase.\n  * Use only if explicitly stated **or** if the city uniquely maps to a single US state.\n  * Do **not** infer the state if multiple states are possible.\n  * If the city does not belong to the stated state → set state to `null`.\n  * If the state cannot be confidently corrected → set state to `null`.\n* **Region**: Title Case; only if clearly stated.\n* **Never guess geography beyond allowed city → state inference.**\n\n---\n\n### 6. Abbreviations\n* Expand only if explicit, standard, and certain.\n* Preserve original text in all `rawText` fields.\n\n---\n\n### 7. Batch & multiple trucks (IMPORTANT)\n* Every email represents an **availability batch**.\n* `availabilityBatch.trucks` must contain **one or more truck objects**.\n* Use:\n  * `truckCount` when multiple identical trucks are stated (`xN`).\n  * Separate truck objects when details differ (equipment, date, origin, destination).\n* **Do NOT merge trucks with different attributes.**\n* Multiple trucks are allowed and expected; do **not** flag as an error.\n\n---\n\n### 8. Destination preference rules\n* Set `destinationPreference.type` correctly:\n  * `exact` → specific city/state\n  * `directional` → heading toward a city or area\n  * `region` → general region (Midwest, Southeast)\n  * `unspecified` → vague or missing destination\n* Populate only the fields that apply to the selected type.\n* Preserve original wording in `destinationPreference.rawText`.\n\n---\n\n### 9. Contact extraction\n* Extract contact details **only if explicitly present**:\n  * Phone\n  * Email\n* Store original contact phrase in `contact.rawText`.\n* If no contact info exists, set `contact = null`.\n\n---\n\n### 10. Confidence & review logic\n* Assign **confidenceScore (0.0–1.0)** per truck:\n  * Reduce score for:\n    * Inferred values (typo corrections, city → state inference)\n    * Missing core fields\n    * Vague language\n* Set `requiresHumanReview = true` if:\n  * Confidence < 0.6\n  * Core fields are missing\n  * Data is ambiguous or conflicting\n* Populate `reviewReasons` accordingly.\n\n---\n\n## CONFIDENCE SCORE GUIDE\n* **0.9–1.0** → Complete, explicit, unambiguous\n* **0.7–0.8** → Minor inference or ambiguity (typo correction or state inference)\n* **0.5–0.6** → Partial data, missing fields\n* **0.3–0.4** → Very vague or weak signal\n* **0.0–0.2** → No actionable availability\n\n---\n\n## AUTOMATIC SELF-CHECK (MANDATORY)\nBefore output:\n* Every non-null value must be directly traceable to the email text.\n* If a value cannot be directly quoted → set it to `null`.\n* Ensure:\n  * At least **one truck** exists in `availabilityBatch.trucks`\n  * All required fields exist\n  * JSON matches schema **exactly**\n* If `confidenceScore < 0.6`:\n  * `requiresHumanReview = true`\n  * Add appropriate `reviewReasons`\n\n---\n\n## OUTPUT RULES (ABSOLUTE)\n* Output **valid JSON only**\n* **No explanations**\n* **No comments**\n* **No markdown**\n* **No extra keys**\n* **Exact schema only**\n\n---\n\n## EMAIL INPUT\n\n```\n{{ $('ParsedEmail').item.json.parsedText }}\n```"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 4096,
+          "textFormat": {
+            "textOptions": {
+              "type": "json_schema",
+              "name": "live_truck_availability_extraction",
+              "schema": "{\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"carrier\", \"contact\", \"availabilityBatch\", \"metadata\"],\n\n  \"properties\": {\n    \"carrier\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"mcNumber\", \"companyName\"],\n      \"properties\": {\n        \"mcNumber\": {\n          \"type\": [\"string\", \"null\"]\n        },\n        \"companyName\": {\n          \"type\": [\"string\", \"null\"]\n        }\n      }\n    },\n\n    \"contact\": {\n      \"type\": [\"object\", \"null\"],\n      \"additionalProperties\": false,\n      \"required\": [\"phone\", \"email\", \"rawText\"],\n      \"properties\": {\n        \"phone\": { \"type\": [\"string\", \"null\"] },\n        \"email\": { \"type\": [\"string\", \"null\"] },\n        \"rawText\": { \"type\": [\"string\", \"null\"] }\n      }\n    },\n\n    \"availabilityBatch\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"sourceType\", \"rawEmailText\", \"trucks\"],\n      \"properties\": {\n        \"sourceType\": {\n          \"type\": \"string\",\n          \"enum\": [\"email\"]\n        },\n        \"rawEmailText\": {\n          \"type\": \"string\"\n        },\n        \"trucks\": {\n          \"type\": \"array\",\n          \"minItems\": 1,\n          \"items\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"required\": [\n              \"truckCount\",\n              \"equipment\",\n              \"availability\",\n              \"origin\",\n              \"driverType\",\n              \"destinationPreference\",\n              \"notes\",\n              \"metadata\"\n            ],\n            \"properties\": {\n              \"truckCount\": {\n                \"type\": \"integer\",\n                \"minimum\": 1\n              },\n\n              \"equipment\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"category\", \"configuration\", \"features\"],\n                \"properties\": {\n                  \"category\": {\n                    \"type\": [\"string\", \"null\"],\n                    \"enum\": [\"van\", \"reefer\", \"flatbed\", \"other\", \"unknown\", null]\n                  },\n                  \"configuration\": {\n                    \"type\": [\"string\", \"null\"]\n                  },\n                  \"features\": {\n                    \"type\": [\"array\", \"null\"],\n                    \"items\": { \"type\": \"string\" }\n                  }\n                }\n              },\n\n              \"availability\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"date\", \"dateRaw\"],\n                \"properties\": {\n                  \"date\": { \"type\": [\"string\", \"null\"] },\n                  \"dateRaw\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"origin\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"city\", \"state\", \"rawText\"],\n                \"properties\": {\n                  \"city\": { \"type\": [\"string\", \"null\"] },\n                  \"state\": { \"type\": [\"string\", \"null\"] },\n                  \"rawText\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"driverType\": {\n                \"type\": [\"array\", \"null\"],\n                \"items\": {\n                  \"type\": \"string\",\n                  \"enum\": [\"solo\", \"team\"]\n                }\n              },\n\n              \"destinationPreference\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\n                  \"type\",\n                  \"region\",\n                  \"primaryCity\",\n                  \"primaryState\",\n                  \"acceptableDestinations\",\n                  \"rawText\"\n                ],\n                \"properties\": {\n                  \"type\": {\n                    \"type\": [\"string\", \"null\"],\n                    \"enum\": [\"exact\", \"directional\", \"region\", \"unspecified\", null]\n                  },\n                  \"region\": { \"type\": [\"string\", \"null\"] },\n                  \"primaryCity\": { \"type\": [\"string\", \"null\"] },\n                  \"primaryState\": { \"type\": [\"string\", \"null\"] },\n                  \"acceptableDestinations\": {\n                    \"type\": [\"array\", \"null\"],\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"additionalProperties\": false,\n                      \"required\": [\"city\", \"state\"],\n                      \"properties\": {\n                        \"city\": { \"type\": \"string\" },\n                        \"state\": { \"type\": \"string\" }\n                      }\n                    }\n                  },\n                  \"rawText\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"notes\": {\n                \"type\": [\"string\", \"array\", \"null\"],\n                \"items\": { \"type\": \"string\" }\n              },\n\n              \"metadata\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\n                  \"confidenceScore\",\n                  \"requiresHumanReview\",\n                  \"reviewReasons\"\n                ],\n                \"properties\": {\n                  \"confidenceScore\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"maximum\": 1\n                  },\n                  \"requiresHumanReview\": {\n                    \"type\": \"boolean\"\n                  },\n                  \"reviewReasons\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"string\",\n                      \"enum\": [\n                        \"low_confidence_score\",\n                        \"incomplete_core_fields\",\n                        \"ambiguous_data\",\n                        \"conflicting_data\"\n                      ]\n                    }\n                  }\n                }\n              }\n            }\n          }\n        }\n      }\n    },\n\n    \"metadata\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"extraction\"],\n      \"properties\": {\n        \"extraction\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\n            \"confidenceScore\",\n            \"requiresHumanReview\",\n            \"reviewReasons\"\n          ],\n          \"properties\": {\n            \"confidenceScore\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"requiresHumanReview\": {\n              \"type\": \"boolean\"\n            },\n            \"reviewReasons\": {\n              \"type\": \"array\",\n              \"items\": {\n                \"type\": \"string\",\n                \"enum\": [\n                  \"low_confidence_score\",\n                  \"incomplete_core_fields\",\n                  \"ambiguous_data\",\n                  \"conflicting_data\"\n                ]\n              }\n            }\n          }\n        }\n      }\n    }\n  }\n}\n"
+            }
+          },
+          "temperature": 0.8
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        -880,
+        -384
+      ],
+      "id": "e8d71470-4d44-4054-803f-c87f96574860",
+      "name": "DataExtractionModel",
+      "retryOnFail": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "Jqd371XJVaWkV4aM",
+          "name": "OpenAi - Default"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-4.1-nano",
+          "mode": "list",
+          "cachedResultName": "GPT-4.1-NANO"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "=You are a **logistics data extraction correction specialist**.\nYour task is to **correct hallucinated or invalid inferred values** in a previous extraction using the original carrier email, and return **valid JSON that strictly conforms to the existing schema**.\n\n---\n\n## CORE RULES (DO NOT VIOLATE)\n\n1. **Correct only invalid or uncertain data**\n   * Modify **only** fields flagged as hallucinated or inferred **and not conclusively verified**.\n   * Do **not** alter fields that are correct, even if previously inferred.\n   * If a flagged value can be **100% conclusively inferred from explicit information in the email**, it **must be filled or normalized**. Do **not** set it to null.\n   * Any inference must be **only when certainty is absolute**. Do **not guess** or assume anything beyond certainty.\n\n2. **Explicit data first**\n   * Every non-null value must appear **verbatim** in the original email **or be a 100% certain inference**.\n   * Never assume, guess, or improve data beyond verification.\n\n3. **Missing or unverifiable data**\n   * If a flagged value cannot be found in the email or cannot be **conclusively inferred**, set it to `null`.\n\n4. **Preserve structure**\n   * Return the **exact same JSON structure** as the previous extraction.\n   * Do not add, remove, or rename keys.\n\n5. **Case and format integrity**\n   * Preserve casing, formatting, and conventions from the original extraction.\n\n6. **Confidence handling**\n   * **Decrease `confidenceScore`** if corrections introduce uncertainty or unresolved values.\n   * **Increase or restore `confidenceScore`** only when a flagged field is conclusively verified or **100% certain inference is applied**.\n   * Set `requiresHumanReview = true` when confidence is low or ambiguity remains.\n\n7. **No explanations**\n   * Output **valid JSON only**.\n   * No comments, markdown, or prose.\n\n---\n\n## INPUTS\n\n### Original Email\n\n```\nSubject: {{ $('EmailData').item.json.subject }}\nFrom: {{ $('EmailData').item.json.from }}\nTo: {{ $('EmailData').item.json.to }}\nDate: {{ $('EmailData').item.json.date }}\nText: {{ $('ParsedEmail').item.json.text }}\n```\n\n### Previous Extraction\n\n```json\n{{ JSON.stringify($('InferenceCheck').item.json, null, 2) }}\n```\n\n### Flagged Fields\n\nThe following fields may contain hallucinated or inferred values:\n\n```json\n{{ $('InferenceCheck').item.json.extraction.metadata.inferences.fields }}\n```\n\n---\n\n## CORRECTION PROCESS\n\n1. For each flagged field:\n   * Search the original email for the exact value.\n   * If **conclusively verified** → keep or replace with exact value.\n   * If a flagged value can be **100% conclusively inferred from explicit information in the email** → fill or normalize it.\n   * If **not found or not fully certain** → set to `null`.\n\n2. **Global self-check**\n   * Scan the entire extraction for any other values not explicitly present in the email.\n   * If found → add their JSON paths to `metadata.inferences.fields` and correct using the same rules (exact value, 100% certain inference, or `null`).\n\n3. **Metadata updates**\n   * Add `\"hallucination_corrected\"` to `metadata.extraction.reviewReasons` only if you have 100% that the inference is an hallucination.\n   * Ensure all corrected fields are listed in `metadata.inferences.fields`.\n   * Set `severity` according to hallucination or inference impact.\n\n---\n\n## FINAL RULE\n\nReturn **only** the fully corrected JSON.\nExact schema.\nNo extra keys.\nNo explanations or prose.\n\n"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {
+          "maxTokens": 4096,
+          "textFormat": {
+            "textOptions": {
+              "type": "json_schema",
+              "name": "live_truck_availability_extraction",
+              "schema": "\n{\n  \"type\": \"object\",\n  \"additionalProperties\": false,\n  \"required\": [\"carrier\", \"contact\", \"availabilityBatch\", \"metadata\"],\n\n  \"properties\": {\n    \"carrier\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"mcNumber\", \"companyName\"],\n      \"properties\": {\n        \"mcNumber\": {\n          \"type\": [\"string\", \"null\"]\n        },\n        \"companyName\": {\n          \"type\": [\"string\", \"null\"]\n        }\n      }\n    },\n\n    \"contact\": {\n      \"type\": [\"object\", \"null\"],\n      \"additionalProperties\": false,\n      \"required\": [\"phone\", \"email\", \"rawText\"],\n      \"properties\": {\n        \"phone\": { \"type\": [\"string\", \"null\"] },\n        \"email\": { \"type\": [\"string\", \"null\"] },\n        \"rawText\": { \"type\": [\"string\", \"null\"] }\n      }\n    },\n\n    \"availabilityBatch\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"sourceType\", \"rawEmailText\", \"trucks\"],\n      \"properties\": {\n        \"sourceType\": {\n          \"type\": \"string\",\n          \"enum\": [\"email\"]\n        },\n        \"rawEmailText\": {\n          \"type\": \"string\"\n        },\n        \"trucks\": {\n          \"type\": \"array\",\n          \"minItems\": 1,\n          \"items\": {\n            \"type\": \"object\",\n            \"additionalProperties\": false,\n            \"required\": [\n              \"truckCount\",\n              \"equipment\",\n              \"availability\",\n              \"origin\",\n              \"driverType\",\n              \"destinationPreference\",\n              \"notes\",\n              \"metadata\"\n            ],\n            \"properties\": {\n              \"truckCount\": {\n                \"type\": \"integer\",\n                \"minimum\": 1\n              },\n\n              \"equipment\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"category\", \"configuration\", \"features\"],\n                \"properties\": {\n                  \"category\": {\n                    \"type\": [\"string\", \"null\"],\n                    \"enum\": [\"van\", \"reefer\", \"flatbed\", \"other\", \"unknown\", null]\n                  },\n                  \"configuration\": {\n                    \"type\": [\"string\", \"null\"]\n                  },\n                  \"features\": {\n                    \"type\": [\"array\", \"null\"],\n                    \"items\": { \"type\": \"string\" }\n                  }\n                }\n              },\n\n              \"availability\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"date\", \"dateRaw\"],\n                \"properties\": {\n                  \"date\": { \"type\": [\"string\", \"null\"] },\n                  \"dateRaw\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"origin\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\"city\", \"state\", \"rawText\"],\n                \"properties\": {\n                  \"city\": { \"type\": [\"string\", \"null\"] },\n                  \"state\": { \"type\": [\"string\", \"null\"] },\n                  \"rawText\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"driverType\": {\n                \"type\": [\"array\", \"null\"],\n                \"items\": {\n                  \"type\": \"string\",\n                  \"enum\": [\"solo\", \"team\"]\n                }\n              },\n\n              \"destinationPreference\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\n                  \"type\",\n                  \"region\",\n                  \"primaryCity\",\n                  \"primaryState\",\n                  \"acceptableDestinations\",\n                  \"rawText\"\n                ],\n                \"properties\": {\n                  \"type\": {\n                    \"type\": [\"string\", \"null\"],\n                    \"enum\": [\"exact\", \"directional\", \"region\", \"unspecified\", null]\n                  },\n                  \"region\": { \"type\": [\"string\", \"null\"] },\n                  \"primaryCity\": { \"type\": [\"string\", \"null\"] },\n                  \"primaryState\": { \"type\": [\"string\", \"null\"] },\n                  \"acceptableDestinations\": {\n                    \"type\": [\"array\", \"null\"],\n                    \"items\": {\n                      \"type\": \"object\",\n                      \"additionalProperties\": false,\n                      \"required\": [\"city\", \"state\"],\n                      \"properties\": {\n                        \"city\": { \"type\": \"string\" },\n                        \"state\": { \"type\": \"string\" }\n                      }\n                    }\n                  },\n                  \"rawText\": { \"type\": [\"string\", \"null\"] }\n                }\n              },\n\n              \"notes\": {\n                \"type\": [\"string\", \"array\", \"null\"],\n                \"items\": { \"type\": \"string\" }\n              },\n\n              \"metadata\": {\n                \"type\": \"object\",\n                \"additionalProperties\": false,\n                \"required\": [\n                  \"confidenceScore\",\n                  \"requiresHumanReview\",\n                  \"reviewReasons\"\n                ],\n                \"properties\": {\n                  \"confidenceScore\": {\n                    \"type\": \"number\",\n                    \"minimum\": 0,\n                    \"maximum\": 1\n                  },\n                  \"requiresHumanReview\": {\n                    \"type\": \"boolean\"\n                  },\n                  \"reviewReasons\": {\n                    \"type\": \"array\",\n                    \"items\": {\n                      \"type\": \"string\",\n                      \"enum\": [\n                        \"low_confidence_score\",\n                        \"incomplete_core_fields\",\n                        \"ambiguous_data\",\n                        \"conflicting_data\"\n                      ]\n                    }\n                  }\n                }\n              }\n            }\n          }\n        }\n      }\n    },\n\n    \"metadata\": {\n      \"type\": \"object\",\n      \"additionalProperties\": false,\n      \"required\": [\"extraction\", \"inferences\"],\n      \"properties\": {\n        \"extraction\": {\n          \"type\": \"object\",\n          \"additionalProperties\": false,\n          \"required\": [\n            \"confidenceScore\",\n            \"requiresHumanReview\",\n            \"reviewReasons\"\n          ],\n          \"properties\": {\n            \"confidenceScore\": {\n              \"type\": \"number\",\n              \"minimum\": 0,\n              \"maximum\": 1\n            },\n            \"requiresHumanReview\": {\n              \"type\": \"boolean\"\n            },\n            \"reviewReasons\": {\n              \"type\": \"array\",\n              \"items\": {\n                \"type\": \"string\",\n                \"enum\": [\n                  \"low_confidence_score\",\n                  \"incomplete_core_fields\",\n                  \"ambiguous_data\",\n                  \"conflicting_data\",\n                  \"hallucination_corrected\"\n                ]\n              }\n            }\n          }\n        },\n        \"inferences\": {\n          \"type\": \"object\", \n          \"additionalProperties\": false,\n          \"required\": [\"fields\", \"severity\"],\n          \"properties\": {\n            \"fields\": {\n              \"type\": \"array\",\n              \"items\": { \"type\": \"string\" }\n            },\n            \"severity\": {\n              \"type\": \"string\",\n              \"enum\": [\"none\", \"low\", \"medium\", \"high\"],\n              \"description\": \"Overall hallucination or inference risk level.\"\n            }\n          }\n        }\n      }\n    }\n  }\n}\n",
+              "strict": true
+            }
+          }
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.1,
+      "position": [
+        496,
+        -448
+      ],
+      "id": "af501a19-8008-46c2-ae2f-2fac3ab70b45",
+      "name": "DataCorrectionModel",
+      "retryOnFail": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "Jqd371XJVaWkV4aM",
+          "name": "OpenAi - Default"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "40a70063-31b0-4614-ad2d-1ddbe0c3404f",
+              "name": "extraction",
+              "value": "={{ $json.output[0].content[0].text }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        832,
+        -448
+      ],
+      "id": "849ac4b9-fb3a-45e2-8fd3-40bbfe22c6f5",
+      "name": "CorrectionOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "71e65079-3750-438c-8c6d-6dc2aa34ea21",
+              "leftValue": "={{ $json.extraction.metadata.inferences.fields }}",
+              "rightValue": true,
+              "operator": {
+                "type": "array",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        144,
+        -384
+      ],
+      "id": "dac29fb6-8b4f-4ff8-93b2-6f825c8d0c88",
+      "name": "IfHasInferredData"
+    },
+    {
+      "parameters": {
+        "jsCode": "// fuzzy string match: case-insensitive substring\nconst fuzzyMatch = (value, email) => {\n  if (typeof value !== 'string' || value.trim() === '' || !value) return true;\n  return email.toLowerCase().includes(value.toLowerCase());\n};\n\n// recursively walk any object and collect inferred fields\nconst findInferredFields = (data, email, path = []) => {\n  if (data == null) return [];\n\n  if (typeof data === 'string') {\n    return fuzzyMatch(data, email) ? [] : [path.join('.')];\n  }\n\n  if (typeof data !== 'object') {\n    return [];\n  }\n\n  if (Array.isArray(data)) {\n    return data.flatMap((item, index) =>\n      findInferredFields(item, email, path.concat(index))\n    );\n  }\n\n  return Object.keys(data).flatMap((key) =>\n    findInferredFields(data[key], email, path.concat(key))\n  );\n};\n\nconst SAFE_FIELDS = ['sourceType', 'type', 'date', 'reviewReasons', 'rawText', 'category'];\n\nconst email = $('ParsedEmail').first().json.parsedText || '';\nconst extraction = $('ExtractionValidation').first().json.extraction;\nconst inferredFields = findInferredFields(extraction, email);\n\nconst inferredFieldsWithoutSafeInferences = inferredFields.filter((path) => !SAFE_FIELDS.some(safeField => path.includes(safeField)));\n\nreturn {\n  extraction: {\n    ...extraction,\n    metadata: {\n      ...extraction.metadata,\n      inferences: {\n        fields: inferredFieldsWithoutSafeInferences\n      }\n    }\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        -384
+      ],
+      "id": "c2c4ea26-56cb-4574-b545-10c2cd231a25",
+      "name": "InferenceCheck"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "04702dcc-4272-4c66-8578-f34c8684244a",
+              "name": "messageId",
+              "value": "={{ $json.sessionId || $json.body.messageId }}",
+              "type": "string"
+            },
+            {
+              "id": "1bbb3412-a215-4909-9730-cf54140dac8e",
+              "name": "from",
+              "value": "={{ $json.body.from }}",
+              "type": "string"
+            },
+            {
+              "id": "cfdb566c-93d4-4051-9a99-21af26972067",
+              "name": "to",
+              "value": "={{ $json.body.to }}",
+              "type": "string"
+            },
+            {
+              "id": "1e44a557-bc2e-4442-b47e-900b657a4607",
+              "name": "date",
+              "value": "={{ $json.body.date || new Date() }}",
+              "type": "string"
+            },
+            {
+              "id": "350c1134-25a7-420d-af0e-df649f13d6bf",
+              "name": "subject",
+              "value": "={{ $json.body.subject }}",
+              "type": "string"
+            },
+            {
+              "id": "0bffaafe-257d-4ef5-a84e-746116cdbdfb",
+              "name": "text",
+              "value": "={{ $json.chatInput || $json.body.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1328,
+        -384
+      ],
+      "id": "3cf4739b-dac1-471e-912a-05cff9c908f7",
+      "name": "EmailData"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "4e17d3d4-3922-42a4-9bd2-c5647f950027",
+              "leftValue": "={{ $json.extraction.metadata.extraction.requiresHumanReview }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1040,
+        -288
+      ],
+      "id": "0b1dd90b-1dc0-4d84-b8d1-c43b1fcc4168",
+      "name": "IfRequireHumanReview"
+    },
+    {
+      "parameters": {
+        "content": "## Live Truck Availability Extraction\n\nExtracts structured data from carrier emails using LLM with hallucination detection.\n\n### Setup\n1. Add OpenAI API credential ([Get one here](https://platform.openai.com/api-keys))\n2. Link credential to `DataExtractionModel` and `DataCorrectionModel` nodes\n3. Activate workflow\n\n### LLM Models\n- **GPT-4.1-mini** - Initial extraction (fast, strong inference)\n- **GPT-4.1-nano** - Correction pass (fast, cost-effective)\n- **GPT-5-nano** - Discarded (reasoning capabilities caused over-correction, removing valid inferred data)\n\n### Webhook Endpoint\n```\nPOST /webhook/extractors/a86054b3-6ea0-4267-84d6-3180203e026e/emails\n```\n\n### Request Format\n```json\n{\n  \"messageId\": \"unique-message-id\",\n  \"from\": \"carrier@example.com\",\n  \"to\": \"dispatch@example.com\",\n  \"date\": \"2026-01-13T10:00:00Z\",\n  \"subject\": \"Truck Availability\",\n  \"text\": \"Email body content here\"\n}\n```\n\n### Docs\nFull documentation, architecture details, and sample outputs:\nhttps://github.com/JimmyBastos/n8n-ai-data-extraction-workflow",
+        "height": 912,
+        "width": 736
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1552,
+        -160
+      ],
+      "id": "d24c6da0-2a1c-47d2-b53d-4201789f308e",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst extraction = $('ExtractionOutput').first().json.extraction;\nconst batch = extraction.availabilityBatch;\nconst rootMetadata = extraction.metadata.extraction;\n\nconst trucks = Array.isArray(batch?.trucks) ? batch.trucks : [];\n\n// NEW: MC number check\nconst hasMissingMcNumber = extraction.carrier?.mcNumber == null;\n\nlet anyTruckRequiresReview = false;\nconst rootReasons = new Set(rootMetadata.reviewReasons || []);\n\nif (hasMissingMcNumber) {\n  rootMetadata.requiresHumanReview = true;\n  rootReasons.add('incomplete_core_fields');\n}\n\n// Per-truck validation\nfor (const truck of trucks) {\n  const truckMetadata = truck.metadata;\n\n  const hasMissingRequiredFields =\n    truck.equipment?.category == null ||\n    truck.availability?.date == null ||\n    truck.origin?.city == null ||\n    truck.origin?.state == null;\n\n  const hasLowConfidence =\n    typeof truckMetadata.confidenceScore === 'number' &&\n    truckMetadata.confidenceScore < 0.7;\n\n  const requiresHumanReview = hasMissingRequiredFields || hasLowConfidence;\n\n  if (requiresHumanReview) {\n    anyTruckRequiresReview = true;\n    truckMetadata.requiresHumanReview = true;\n\n    const reasons = new Set(truckMetadata.reviewReasons || []);\n\n    if (hasMissingRequiredFields) {\n      reasons.add('incomplete_core_fields');\n      rootReasons.add('incomplete_core_fields');\n    }\n\n    if (hasLowConfidence) {\n      reasons.add('low_confidence_score');\n      rootReasons.add('low_confidence_score');\n    }\n\n    truckMetadata.reviewReasons = Array.from(reasons);\n  }\n}\n\n// Root metadata aggregation\nif (anyTruckRequiresReview || hasMissingMcNumber) {\n  rootMetadata.requiresHumanReview = true;\n  rootMetadata.reviewReasons = Array.from(rootReasons);\n}\n\nextraction.metadata.extraction = rootMetadata;\n\nreturn { extraction };\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -304,
+        -384
+      ],
+      "id": "f4c27cf5-898e-4c9b-b248-132b94cdd62b",
+      "name": "ExtractionValidation"
+    },
+    {
+      "parameters": {
+        "content": "### Human Review Path\nThe IfRequireHumanReview node enables a secondary workflow branch for flagged extractions. We can leverage this for further improvements.",
+        "width": 352
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        928,
+        -128
+      ],
+      "typeVersion": 1,
+      "id": "4d4d8d07-5021-4041-98d7-e442c31ef941",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "extractions/d19cbcdc-d8a9-465a-af00-5f27531aca1d/trucks",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1616,
+        -384
+      ],
+      "id": "f626097f-caa2-491c-a4a0-8f9b7dc6dddb",
+      "name": "Webhook",
+      "webhookId": "d19cbcdc-d8a9-465a-af00-5f27531aca1d"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.extraction }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1408,
+        -384
+      ],
+      "id": "c0503f55-2d26-4103-a2b4-ba93be51075e",
+      "name": "Response"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "ExtractionOutput": {
+      "main": [
+        [
+          {
+            "node": "ExtractionValidation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ParsedEmail": {
+      "main": [
+        [
+          {
+            "node": "DataExtractionModel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DataExtractionModel": {
+      "main": [
+        [
+          {
+            "node": "ExtractionOutput",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "DataCorrectionModel": {
+      "main": [
+        [
+          {
+            "node": "CorrectionOutput",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CorrectionOutput": {
+      "main": [
+        [
+          {
+            "node": "IfRequireHumanReview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IfHasInferredData": {
+      "main": [
+        [
+          {
+            "node": "DataCorrectionModel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IfRequireHumanReview",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "InferenceCheck": {
+      "main": [
+        [
+          {
+            "node": "IfHasInferredData",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "EmailData": {
+      "main": [
+        [
+          {
+            "node": "ParsedEmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IfRequireHumanReview": {
+      "main": [
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ExtractionValidation": {
+      "main": [
+        [
+          {
+            "node": "InferenceCheck",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "EmailData",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  },
+  "versionId": "9fc0f5af-0bb3-4a10-af36-e9f6ac14fa79",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "7ddea0a9fd2e0ba09b44f3075aae1eb205c45b7e344fe3394d779505fc858ae3"
+  },
+  "id": "mYvYGhDXNXN6tn7I",
+  "tags": []
+}
